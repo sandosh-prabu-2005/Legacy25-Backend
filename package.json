@@ -1,0 +1,37 @@
+{
+  "name": "fiesta25",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "build": "echo 'Backend ready for deployment'",
+    "prod": "pm2 server.js --name fiesta --env production",
+    "stop": "pm2 stop fiesta",
+    "seed": "node scripts/seed-database.js",
+    "seed-direct": "node utils/seeder.js",
+    "seed-final": "node utils/final-seeder.js",
+    "validate-clubs": "node scripts/validate-clubs.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.17.1",
+    "nanoid": "^5.1.5",
+    "nodemailer": "^7.0.5",
+    "nodemon": "^3.1.10",
+    "razorpay": "^2.9.6",
+    "react-icons": "^5.5.0",
+    "validator": "^13.15.15"
+  }
+}
