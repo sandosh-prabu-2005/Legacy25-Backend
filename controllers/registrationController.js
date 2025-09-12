@@ -216,7 +216,7 @@ exports.registerEventWithParticipants = catchAsyncError(async (req, res, next) =
     const participant = participants[i];
     
     // Validate required fields
-    if (!participant.name || !participant.level || !participant.ugpg || !participant.dept || !participant.year || !participant.gender) {
+    if (!participant.name || !participant.level || !participant.degree || !participant.dept || !participant.year || !participant.gender) {
       return next(new ErrorHandler(`Missing required fields for participant ${i + 1}`, 400));
     }
 
@@ -253,7 +253,7 @@ exports.registerEventWithParticipants = catchAsyncError(async (req, res, next) =
         mobile: participant.mobile || null,
         dept: participant.dept === "Other" ? participant.customDept : participant.dept,
         year: participant.year,
-        ugpg: participant.ugpg,
+        degree: participant.degree,
         gender: participant.gender,
         registrationType: "direct"
       })),
@@ -288,7 +288,7 @@ exports.registerEventWithParticipants = catchAsyncError(async (req, res, next) =
       
       // Educational Information
       level: participant.level,
-      degree: participant.ugpg,
+      degree: participant.degree,
       department: participant.dept === "Other" ? (participant.customDept || "Other") : participant.dept,
       customDepartment: participant.dept === "Other" ? participant.customDept : null,
       year: participant.year,

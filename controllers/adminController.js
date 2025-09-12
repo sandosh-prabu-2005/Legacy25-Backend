@@ -121,7 +121,7 @@ const getAllEventsWithApplications = catchAsyncError(async (req, res, next) => {
   const events = await EventModel.find()
     .populate({
       path: "applications.userId",
-      select: "name email year dept phone UserId",
+      select: "name email level degree dept year phoneNumber UserId",
     })
     .sort({ createdAt: -1 });
   const eventsWithStats = events.map((event) => ({
@@ -139,7 +139,7 @@ const getAllEventsWithApplications = catchAsyncError(async (req, res, next) => {
 const getEventDetails = catchAsyncError(async (req, res, next) => {
   const event = await EventModel.findById(req.params.id).populate({
     path: "applications.userId",
-    select: "name email dept year phone UserId",
+    select: "name email level degree dept year phoneNumber UserId",
   });
 
   if (!event) {
@@ -1727,7 +1727,7 @@ const getClubAdminStats = catchAsyncError(async (req, res, next) => {
     if (event.eventTeams && event.eventTeams.length > 0) {
       const populatedTeams = await TeamModel.populate(event.eventTeams, [
         { path: "leader", select: "name email dept year" },
-        { path: "members.userId", select: "name email dept year" },
+        { path: "members.userId", select: "name email level degree dept year" },
       ]);
       event.eventTeams = populatedTeams;
     }

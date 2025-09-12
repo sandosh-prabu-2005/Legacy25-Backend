@@ -51,7 +51,7 @@ const TeamSchema = new mongoose.Schema(
             return !this.userId; // Required for direct participants
           }
         },
-        ugpg: {
+        degree: {
           type: String,
           required: function() {
             return !this.userId; // Required for direct participants

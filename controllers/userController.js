@@ -10,7 +10,7 @@ const signUpUser = catchAsyncError(async (req, res, next) => {
   // Debug: Log incoming signup data
   console.log('Signup request body:', req.body);
 
-  const { name, year, dept, ugpg, email, password, gender, phoneNumber, role, college, city } = req.body;
+  const { name, level, degree, dept, year, gender, phoneNumber, email, password, role, college, city } = req.body;
 
   let existingUser = await UserModel.findOne({ email });
   if (existingUser) {
@@ -33,16 +33,17 @@ const signUpUser = catchAsyncError(async (req, res, next) => {
 
   const user = new UserModel({
     name,
-    year,
+    level: isFirstUser ? "UG" : level, // Default level for first user (admin)
+    degree: isFirstUser ? "BE" : degree, // Default degree for first user (admin)
     dept,
-    ugpg,
+    year: isFirstUser ? "0" : year, // Default year for first user (admin)
+    gender: isFirstUser ? "Male" : gender, // Default gender for first user (admin)
+    phoneNumber: isFirstUser ? "9999999999" : phoneNumber, // Default phone for first user (admin)
     email,
     password,
-    gender,
-    phoneNumber: isFirstUser ? undefined : phoneNumber, // Only for regular users
     role: isFirstUser ? "admin" : role || "user",
     isSuperAdmin: isFirstUser,
-    club: isFirstUser ? "FINE ARTS" : undefined, // Updated to use new club name
+    club: isFirstUser ? "FINE ARTS" : undefined,
     college,
     city,
   });

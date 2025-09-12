@@ -8,6 +8,34 @@ const { Schema } = mongoose;
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
+  level: { 
+    type: String, 
+    required: true,
+    enum: ["UG", "PG", "PhD"],
+    default: function () {
+      return this.role === "admin" ? "UG" : undefined;
+    },
+  },
+  degree: {
+    type: String,
+    required: true,
+    validate: {
+      validator: function (v) {
+        // Accept comprehensive degree types
+        const allowed = [
+          // UG degrees
+          "BE", "BTech", "BSc", "BCA", "BA", "BCom", "BBA", "BMS",
+          // PG degrees  
+          "ME", "MTech", "MSc", "MCA", "MA", "MCom", "MBA", "MSW",
+          // PhD
+          "PhD"
+        ];
+        return allowed.includes(v);
+      },
+      message: "Degree type is invalid."
+    }
+  },
+  dept: { type: String, required: true },
   year: {
     type: String,
     required: true,
@@ -15,8 +43,27 @@ const UserSchema = new Schema({
       return this.role === "admin" ? "0" : undefined;
     },
   },
-  dept: { type: String, required: true },
-  ugpg: { type: String, required: true },
+  gender: { 
+    type: String, 
+    required: true,
+    enum: ["Male", "Female", "Other"],
+    default: function () {
+      return this.role === "admin" ? "Male" : undefined;
+    },
+  },
+  phoneNumber: { 
+    type: String, 
+    required: true,
+    validate: {
+      validator: function (v) {
+        return /^[6-9]\d{9}$/.test(v);
+      },
+      message: "Please enter a valid 10-digit mobile number starting with 6-9."
+    },
+    default: function () {
+      return this.role === "admin" ? "9999999999" : undefined;
+    },
+  },
   email: {
     type: String,
     required: true,
@@ -28,22 +75,6 @@ const UserSchema = new Schema({
     required: true,
     maxlength: [30, "Password cannot exceed 30 characters"],
     select: false,
-  },
-  dept: { type: String, required: true },
-  ugpg: {
-    type: String,
-    required: true,
-    validate: {
-      validator: function (v) {
-        // Accept only known UG/PG types (add more as needed)
-        const allowed = [
-          "BE", "BTech", "BA", "BSc", "BCom", "BBA_BMS", "BCA", "Other_Undergraduate", "Postgraduate_Common",
-          "MA", "MSc", "MCom", "MBA", "MCA", "MSW", "PhD", "M.E.", "UG", "PG"
-        ];
-        return allowed.includes(v);
-      },
-      message: "UG/PG type is invalid."
-    }
   },
   college: { type: String, required: true },
   city: { type: String, required: true },

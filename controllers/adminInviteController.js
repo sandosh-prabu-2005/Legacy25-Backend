@@ -284,12 +284,16 @@ const completeAdminSignup = catchAsyncError(async (req, res, next) => {
     email: invite.email,
     password,
     gender,
-    // No rollNumber for admin users
+    level: "UG", // Default level for admins
+    degree: "BE", // Default degree for admins
+    dept: "Administration", // Default department for admins
+    year: "0", // For admins, we use "0" instead of student year
+    phoneNumber: "9999999999", // Default phone for admins
+    college: "SSN College of Engineering", // Default college for admins
+    city: "Chennai", // Default city for admins
     role: "admin",
     club: mappedClubName,
     assignedEvent: invite.eventId._id, // Assign the admin to the specific event
-    year: "Staff", // For admins, we use "Staff" instead of student year
-    dept: "Administration", // Default department for admins
     isVerified: true, // Auto-verify invited admins
   });
 
