@@ -22,7 +22,52 @@ const TeamSchema = new mongoose.Schema(
         userId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Users",
-          required: true,
+          required: false, // Not required for direct participants
+        },
+        // Direct participant fields (when userId is not present)
+        name: {
+          type: String,
+          required: function() {
+            return !this.userId; // Required only if no userId
+          }
+        },
+        email: {
+          type: String,
+          required: false // Optional for both invite and direct participants
+        },
+        mobile: {
+          type: String,
+          required: false // Optional for both invite and direct participants
+        },
+        dept: {
+          type: String,
+          required: function() {
+            return !this.userId; // Required for direct participants
+          }
+        },
+        year: {
+          type: String,
+          required: function() {
+            return !this.userId; // Required for direct participants
+          }
+        },
+        ugpg: {
+          type: String,
+          required: function() {
+            return !this.userId; // Required for direct participants
+          }
+        },
+        gender: {
+          type: String,
+          enum: ["Male", "Female", "Other"],
+          required: function() {
+            return !this.userId; // Required for direct participants
+          }
+        },
+        registrationType: {
+          type: String,
+          enum: ["invite", "direct"],
+          default: "invite"
         },
         joinedAt: {
           type: Date,

@@ -48,7 +48,9 @@ app.use("/api/v1", user);
 app.use("/api/v1", events);
 app.use("/api/v1", admin);
 app.use("/api/v1/admin", adminInvite);
+// Registration routes mounted at both /api/v1 and /api/v1/registration for compatibility
 app.use("/api/v1", registration);
+app.use("/api/v1/registration", registration);
 app.use("/api/v1/teams", team);
 app.use("/api/v1", payment);
 
