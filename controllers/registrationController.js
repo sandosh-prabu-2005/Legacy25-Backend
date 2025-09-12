@@ -59,7 +59,7 @@ exports.registerSoloEvent = catchAsyncError(async (req, res, next) => {
 
   // Check event capacity for solo events
   if (event.maxApplications) {
-    const soloApplications = event.applications.filter(app => !app.teamId);
+    const soloApplications = event.applications.filter((app) => !app.teamId);
     if (soloApplications.length >= event.maxApplications) {
       return next(new ErrorHandler("Event is full", 400));
     }
@@ -164,52 +164,74 @@ exports.registerGroupEvent = catchAsyncError(async (req, res, next) => {
 });
 
 // Handle direct event registration with participants (new functionality)
-exports.registerEventWithParticipants = catchAsyncError(async (req, res, next) => {
-  const { eventId, teamName, participants } = req.body;
-  const registrantId = req.user._id;
-  
-  console.log("[DEBUG] Registration request:", {
-    eventId,
-    teamName,
-    participantsCount: participants?.length,
-    registrantId: registrantId.toString()
-  });
+exports.registerEventWithParticipants = catchAsyncError(
+  async (req, res, next) => {
+    const { eventId, teamName, participants } = req.body;
+    const registrantId = req.user._id;
 
-  // Validate required fields
-  if (!eventId || !participants || !Array.isArray(participants) || participants.length === 0) {
-    return next(new ErrorHandler("Event ID and participants are required", 400));
-  }
+    console.log("[DEBUG] Registration request:", {
+      eventId,
+      teamName,
+      participantsCount: participants?.length,
+      registrantId: registrantId.toString(),
+    });
 
-  console.log("varudhu bha=============");
-  // Check if event exists
-  const event = await Event.findById(eventId);
-  if (!event) {
-    return next(new ErrorHandler("Event not found", 404));
-  }
-  console.log("==============debug======================");
-  console.table(event);
-  // Get registrant (user who is registering) details for college inheritance
-  const registrant = await User.findById(registrantId);
-  if (!registrant) {
-    return next(new ErrorHandler("Registrant not found", 404));
-  }
-
-  // Validate participant count against event requirements
-  if (event.event_type === "solo" && participants.length > 1) {
-    return next(new ErrorHandler("Solo events can only have one participant", 400));
-  }
-
-  if (event.event_type === "group") {
-    if (participants.length < event.minTeamSize) {
-      return next(new ErrorHandler(`Minimum ${event.minTeamSize} participants required for this event`, 400));
+    // Validate required fields
+    if (
+      !eventId ||
+      !participants ||
+      !Array.isArray(participants) ||
+      participants.length === 0
+    ) {
+      return next(
+        new ErrorHandler("Event ID and participants are required", 400)
+      );
     }
-    if (participants.length > event.maxTeamSize) {
-      return next(new ErrorHandler(`Maximum ${event.maxTeamSize} participants allowed for this event`, 400));
+
+    console.log("varudhu bha=============");
+    // Check if event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return next(new ErrorHandler("Event not found", 404));
     }
-    if (!teamName || teamName.trim() === "") {
-      return next(new ErrorHandler("Team name is required for group events", 400));
+    console.log("==============debug======================");
+    console.table(event);
+    // Get registrant (user who is registering) details for college inheritance
+    const registrant = await User.findById(registrantId);
+    if (!registrant) {
+      return next(new ErrorHandler("Registrant not found", 404));
     }
-  }
+
+    // Validate participant count against event requirements
+    if (event.event_type === "solo" && participants.length > 1) {
+      return next(
+        new ErrorHandler("Solo events can only have one participant", 400)
+      );
+    }
+
+    if (event.event_type === "group") {
+      if (participants.length < event.minTeamSize) {
+        return next(
+          new ErrorHandler(
+            `Minimum ${event.minTeamSize} participants required for this event`,
+            400
+          )
+        );
+      }
+      if (participants.length > event.maxTeamSize) {
+        return next(
+          new ErrorHandler(
+            `Maximum ${event.maxTeamSize} participants allowed for this event`,
+            400
+          )
+        );
+      }
+      if (!teamName || teamName.trim() === "") {
+        return next(
+          new ErrorHandler("Team name is required for group events", 400)
+        );
+      }
+    }
 
   // Validate each participant
   for (let i = 0; i < participants.length; i++) {
@@ -220,25 +242,38 @@ exports.registerEventWithParticipants = catchAsyncError(async (req, res, next) =
       return next(new ErrorHandler(`Missing required fields for participant ${i + 1}`, 400));
     }
 
-    // Validate custom department if "Other" is selected
-    if (participant.dept === "Other" && (!participant.customDept || participant.customDept.trim() === "")) {
-      return next(new ErrorHandler(`Custom department is required for participant ${i + 1}`, 400));
+      // Validate custom department if "Other" is selected
+      if (
+        participant.dept === "Other" &&
+        (!participant.customDept || participant.customDept.trim() === "")
+      ) {
+        return next(
+          new ErrorHandler(
+            `Custom department is required for participant ${i + 1}`,
+            400
+          )
+        );
+      }
     }
-  }
 
-  let teamId = null;
-  // For group events, create a team record using existing team functionality
-  if (event.event_type === "group") {
-    // Check if user already has a team for this event
-    const existingTeam = await Teams.findOne({
-      eventId,
-      leader: registrantId,
-      isRegistered: true
-    });
+    let teamId = null;
+    // For group events, create a team record using existing team functionality
+    if (event.event_type === "group") {
+      // Check if user already has a team for this event
+      const existingTeam = await Teams.findOne({
+        eventId,
+        leader: registrantId,
+        isRegistered: true,
+      });
 
-    if (existingTeam) {
-      return next(new ErrorHandler("You already have a registered team for this event", 400));
-    }
+      if (existingTeam) {
+        return next(
+          new ErrorHandler(
+            "You already have a registered team for this event",
+            400
+          )
+        );
+      }
 
     // Create team with direct members (using our existing team model)
     const team = await Teams.create({
@@ -306,37 +341,40 @@ exports.registerEventWithParticipants = catchAsyncError(async (req, res, next) =
     });
   });
 
-  // Execute all registration creations
-  const registrations = await Promise.all(registrationPromises);
-  
-  console.log("[DEBUG] Created registrations:", {
-    count: registrations.length,
-    eventType: event.event_type,
-    teamId: teamId ? teamId.toString() : null,
-    collegeName: registrant.college,
-    collegeCity: registrant.city
-  });
+    // Execute all registration creations
+    const registrations = await Promise.all(registrationPromises);
 
-  // NOTE: Solo events are now stored ONLY in EventRegistration collection, 
-  // not in Event.applications for cleaner data architecture
-
-  res.status(201).json({
-    success: true,
-    message: `Successfully registered ${participants.length} participant${participants.length > 1 ? 's' : ''} for ${event.name}`,
-    data: {
-      eventName: event.name,
+    console.log("[DEBUG] Created registrations:", {
+      count: registrations.length,
       eventType: event.event_type,
-      teamName: teamName || null,
-      participantCount: participants.length,
-      registrations: registrations.map(reg => ({
-        participantName: reg.participantName,
-        department: reg.fullDepartment,
-        year: reg.year,
-        registrationId: reg._id
-      }))
-    }
-  });
-});
+      teamId: teamId ? teamId.toString() : null,
+      collegeName: registrant.college,
+      collegeCity: registrant.city,
+    });
+
+    // NOTE: Solo events are now stored ONLY in EventRegistration collection,
+    // not in Event.applications for cleaner data architecture
+
+    res.status(201).json({
+      success: true,
+      message: `Successfully registered ${participants.length} participant${
+        participants.length > 1 ? "s" : ""
+      } for ${event.name}`,
+      data: {
+        eventName: event.name,
+        eventType: event.event_type,
+        teamName: teamName || null,
+        participantCount: participants.length,
+        registrations: registrations.map((reg) => ({
+          participantName: reg.participantName,
+          department: reg.fullDepartment,
+          year: reg.year,
+          registrationId: reg._id,
+        })),
+      },
+    });
+  }
+);
 
 // Get registrations for user's college (for college registrations view)
 exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
@@ -351,13 +389,109 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
   // Fetch all registrations for the user's college
   const registrations = await EventRegistration.find({
     collegeName: user.college,
-    isActive: true
+    isActive: true,
   }).sort({ registrationDate: -1 });
+
+  // Separate solo and team registrations
+  const soloRegistrations = registrations.filter(
+    (reg) => reg.eventType === "solo"
+  );
+  const teamRegistrations = registrations.filter(
+    (reg) => reg.eventType === "group"
+  );
+
+  // Group team registrations by team and event
+  const groupedTeamRegistrations = {};
+  teamRegistrations.forEach((reg) => {
+    const teamKey = `${reg.teamName}-${reg.eventName}`;
+    if (!groupedTeamRegistrations[teamKey]) {
+      groupedTeamRegistrations[teamKey] = {
+        teamName: reg.teamName,
+        eventName: reg.eventName,
+        eventId: reg.eventId,
+        teamId: reg.teamId,
+        eventType: reg.eventType,
+        members: [],
+      };
+    }
+    groupedTeamRegistrations[teamKey].members.push({
+      _id: reg._id,
+      participantName: reg.participantName,
+      participantEmail: reg.participantEmail,
+      participantMobile: reg.participantMobile,
+      level: reg.level,
+      degree: reg.degree,
+      department: reg.fullDepartment,
+      year: reg.year,
+      gender: reg.gender,
+      registrationDate: reg.registrationDate,
+      registrantId: reg.registrantId,
+      registrantEmail: reg.registrantEmail,
+    });
+  });
+
+  // Convert grouped teams to array
+  const teamRegistrationsList = Object.values(groupedTeamRegistrations);
+
+  // Calculate statistics
+  const stats = {
+    total: registrations.length,
+    soloCount: soloRegistrations.length,
+    teamCount: teamRegistrations.length,
+    totalTeams: teamRegistrationsList.length,
+    byGender: { Male: 0, Female: 0, Other: 0 },
+    byLevel: { UG: 0, PG: 0, PhD: 0 },
+    byEvent: {},
+    byEventType: {
+      solo: soloRegistrations.length,
+      group: teamRegistrations.length,
+    },
+  };
+
+  // Calculate statistics from all registrations
+  registrations.forEach((reg) => {
+    // Gender stats
+    if (reg.gender in stats.byGender) {
+      stats.byGender[reg.gender]++;
+    }
+
+    // Level stats
+    if (reg.level in stats.byLevel) {
+      stats.byLevel[reg.level]++;
+    }
+
+    // Event stats
+    if (reg.eventName in stats.byEvent) {
+      stats.byEvent[reg.eventName]++;
+    } else {
+      stats.byEvent[reg.eventName] = 1;
+    }
+  });
 
   res.status(200).json({
     success: true,
-    registrations,
+    data: {
+      soloRegistrations: soloRegistrations.map((reg) => ({
+        _id: reg._id,
+        eventName: reg.eventName,
+        eventId: reg.eventId,
+        eventType: reg.eventType,
+        participantName: reg.participantName,
+        participantEmail: reg.participantEmail,
+        participantMobile: reg.participantMobile,
+        level: reg.level,
+        degree: reg.degree,
+        department: reg.fullDepartment,
+        year: reg.year,
+        gender: reg.gender,
+        registrationDate: reg.registrationDate,
+        registrantId: reg.registrantId,
+        registrantEmail: reg.registrantEmail,
+      })),
+      teamRegistrations: teamRegistrationsList,
+    },
+    stats,
     college: user.college,
-    total: registrations.length
+    total: registrations.length,
   });
 });
