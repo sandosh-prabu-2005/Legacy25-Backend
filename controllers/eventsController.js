@@ -1,6 +1,8 @@
 const catchAsyncError = require("../middlewares/catchAsyncError");
 const Event = require("../models/events");
 const Teams = require("../models/teams");
+const Solo = require("../models/solo");
+const EventRegistration = require("../models/eventRegistrations");
 const ErrorHandler = require("../utils/errorHandler");
 
 // Helper function to check if user is already registered for an event
@@ -108,6 +110,14 @@ const getAllEvents = catchAsyncError(async (req, res, next) => {
         },
       },
       {
+        $lookup: {
+          from: "eventregistrations",
+          localField: "_id",
+          foreignField: "eventId",
+          as: "eventRegistrations",
+        },
+      },
+      {
         $addFields: {
           registeredTeamsCount: {
             $size: {
@@ -118,18 +128,41 @@ const getAllEvents = catchAsyncError(async (req, res, next) => {
             },
           },
           totalTeamsCount: { $size: "$eventTeams" },
+          soloRegistrationsCount: {
+            $size: {
+              $filter: {
+                input: "$eventRegistrations",
+                cond: { $eq: ["$$this.eventType", "solo"] },
+              },
+            },
+          },
+          groupRegistrationsCount: {
+            $size: {
+              $filter: {
+                input: "$eventRegistrations",
+                cond: { $eq: ["$$this.eventType", "group"] },
+              },
+            },
+          },
           actualSeatsTaken: {
             $cond: {
               if: { $eq: ["$event_type", "group"] },
               then: {
                 $size: {
                   $filter: {
-                    input: "$eventTeams",
-                    cond: { $eq: ["$$this.isRegistered", true] },
+                    input: "$eventRegistrations",
+                    cond: { $eq: ["$$this.eventType", "group"] },
                   },
                 },
               },
-              else: { $size: "$applications" },
+              else: {
+                $size: {
+                  $filter: {
+                    input: "$eventRegistrations",
+                    cond: { $eq: ["$$this.eventType", "solo"] },
+                  },
+                },
+              },
             },
           },
           availableSeats: {
@@ -144,12 +177,19 @@ const getAllEvents = catchAsyncError(async (req, res, next) => {
                       then: {
                         $size: {
                           $filter: {
-                            input: "$eventTeams",
-                            cond: { $eq: ["$$this.isRegistered", true] },
+                            input: "$eventRegistrations",
+                            cond: { $eq: ["$$this.eventType", "group"] },
                           },
                         },
                       },
-                      else: { $size: "$applications" },
+                      else: {
+                        $size: {
+                          $filter: {
+                            input: "$eventRegistrations",
+                            cond: { $eq: ["$$this.eventType", "solo"] },
+                          },
+                        },
+                      },
                     },
                   },
                 ],
@@ -162,6 +202,7 @@ const getAllEvents = catchAsyncError(async (req, res, next) => {
       {
         $project: {
           eventTeams: 0,
+          eventRegistrations: 0,
         },
       },
       { $skip: skip },
