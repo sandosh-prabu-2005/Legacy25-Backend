@@ -427,6 +427,13 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
       isActive: true,
     }).sort({ registrationDate: -1 });
   } else {
+    // For regular users: Get coordinators from the same college for reference
+    coordinators = await User.find({
+      college: user.college,
+      role: "admin",
+      isVerified: true,
+    }).select("_id name email club assignedEvent");
+
     // For regular users: Only show registrations for the user's college (existing behavior)
     registrations = await EventRegistration.find({
       collegeName: user.college,
@@ -539,15 +546,116 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
     total: registrations.length,
     userRole: user.role,
     currentUserId: userId.toString(),
-    coordinators:
-      user.role === "admin"
-        ? coordinators.map((coord) => ({
-            _id: coord._id,
-            name: coord.name,
-            email: coord.email,
-            club: coord.club,
-            assignedEvent: coord.assignedEvent,
-          }))
-        : [],
+    coordinators: coordinators.map((coord) => ({
+      _id: coord._id,
+      name: coord.name,
+      email: coord.email,
+      club: coord.club,
+      assignedEvent: coord.assignedEvent,
+    })),
   });
 });
+
+// Update solo registration participant details
+exports.updateSoloRegistration = catchAsyncError(async (req, res, next) => {
+  const { registrationId } = req.params;
+  const userId = req.user._id;
+  const {
+    participantName,
+    participantEmail,
+    department,
+    degree,
+    year,
+    level,
+    gender,
+    mobile,
+  } = req.body;
+
+  // Find the registration
+  const registration = await EventRegistration.findById(registrationId);
+  if (!registration) {
+    return next(new ErrorHandler("Registration not found", 404));
+  }
+
+  // Check if the current user is the one who registered this participant
+  if (registration.registrantId.toString() !== userId.toString()) {
+    return next(
+      new ErrorHandler("You can only edit participants you registered", 403)
+    );
+  }
+
+  // Update the registration
+  registration.participantName =
+    participantName || registration.participantName;
+  registration.participantEmail =
+    participantEmail || registration.participantEmail;
+  registration.department = department || registration.department;
+  registration.degree = degree || registration.degree;
+  registration.year = year || registration.year;
+  registration.level = level || registration.level;
+  registration.gender = gender || registration.gender;
+  registration.mobile = mobile || registration.mobile;
+
+  await registration.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Participant details updated successfully",
+    registration,
+  });
+});
+
+// Update team registration member details
+exports.updateTeamRegistrationMember = catchAsyncError(
+  async (req, res, next) => {
+    const { teamId, memberId } = req.params;
+    const userId = req.user._id;
+    const {
+      participantName,
+      participantEmail,
+      department,
+      degree,
+      year,
+      level,
+      gender,
+      mobile,
+    } = req.body;
+
+    // Find the team
+    const team = await Teams.findById(teamId);
+    if (!team) {
+      return next(new ErrorHandler("Team not found", 404));
+    }
+
+    // Check if the current user is the one who registered this team
+    if (team.registrantId.toString() !== userId.toString()) {
+      return next(
+        new ErrorHandler("You can only edit teams you registered", 403)
+      );
+    }
+
+    // Find the member in the team
+    const member = team.members.find((m) => m._id.toString() === memberId);
+    if (!member) {
+      return next(new ErrorHandler("Member not found in team", 404));
+    }
+
+    // Update the member details
+    member.participantName = participantName || member.participantName;
+    member.participantEmail = participantEmail || member.participantEmail;
+    member.department = department || member.department;
+    member.degree = degree || member.degree;
+    member.year = year || member.year;
+    member.level = level || member.level;
+    member.gender = gender || member.gender;
+    member.mobile = mobile || member.mobile;
+
+    await team.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Team member details updated successfully",
+      team,
+    });
+  }
+);
