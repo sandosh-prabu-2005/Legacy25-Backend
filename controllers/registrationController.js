@@ -233,14 +233,26 @@ exports.registerEventWithParticipants = catchAsyncError(
       }
     }
 
-  // Validate each participant
-  for (let i = 0; i < participants.length; i++) {
-    const participant = participants[i];
-    
-    // Validate required fields
-    if (!participant.name || !participant.level || !participant.degree || !participant.dept || !participant.year || !participant.gender) {
-      return next(new ErrorHandler(`Missing required fields for participant ${i + 1}`, 400));
-    }
+    // Validate each participant
+    for (let i = 0; i < participants.length; i++) {
+      const participant = participants[i];
+
+      // Validate required fields
+      if (
+        !participant.name ||
+        !participant.level ||
+        !participant.degree ||
+        !participant.dept ||
+        !participant.year ||
+        !participant.gender
+      ) {
+        return next(
+          new ErrorHandler(
+            `Missing required fields for participant ${i + 1}`,
+            400
+          )
+        );
+      }
 
       // Validate custom department if "Other" is selected
       if (
@@ -275,71 +287,78 @@ exports.registerEventWithParticipants = catchAsyncError(
         );
       }
 
-    // Create team with direct members (using our existing team model)
-    const team = await Teams.create({
-      eventId,
-      teamName: teamName.trim(),
-      leader: registrantId,
-      members: participants.map((participant) => ({
-        // No userId for direct participants
-        userId: null,
-        name: participant.name,
-        email: participant.email || null,
-        mobile: participant.mobile || null,
-        dept: participant.dept === "Other" ? participant.customDept : participant.dept,
-        year: participant.year,
-        degree: participant.degree,
-        gender: participant.gender,
-        registrationType: "direct"
-      })),
-      maxMembers: event.maxTeamSize || 6,
-      isRegistered: true, // Mark as registered since all members are provided
-      registeredAt: new Date(),
-      registeredBy: registrantId
-    });
+      // Create team with direct members (using our existing team model)
+      const team = await Teams.create({
+        eventId,
+        teamName: teamName.trim(),
+        leader: registrantId,
+        members: participants.map((participant) => ({
+          // No userId for direct participants
+          userId: null,
+          name: participant.name,
+          email: participant.email || null,
+          mobile: participant.mobile || null,
+          dept:
+            participant.dept === "Other"
+              ? participant.customDept
+              : participant.dept,
+          year: participant.year,
+          degree: participant.degree,
+          gender: participant.gender,
+          registrationType: "direct",
+        })),
+        maxMembers: event.maxTeamSize || 6,
+        isRegistered: true, // Mark as registered since all members are provided
+        registeredAt: new Date(),
+        registeredBy: registrantId,
+      });
 
-    teamId = team._id;
-  }
-  // Create individual registration records for statistical analysis
-  const registrationPromises = participants.map(participant => {
-    return EventRegistration.create({
-      // Event Information
-      eventId,
-      eventName: event.name,
-      eventType: event.event_type,
-      
-      // Team Information (if applicable)
-      teamId,
-      teamName: event.event_type === "group" ? teamName.trim() : null,
-      
-      // Registrant Information
-      registrantId,
-      registrantEmail: registrant.email,
-      
-      // Participant Information
-      participantName: participant.name,
-      participantEmail: participant.email || null,
-      participantMobile: participant.mobile || null,
-      
-      // Educational Information
-      level: participant.level,
-      degree: participant.degree,
-      department: participant.dept === "Other" ? (participant.customDept || "Other") : participant.dept,
-      customDepartment: participant.dept === "Other" ? participant.customDept : null,
-      year: participant.year,
-      
-      // Demographic Information
-      gender: participant.gender,
-      
-      // College Information (inherited from registrant)
-      collegeName: registrant.college,
-      collegeCity: registrant.city,
-      collegeState: registrant.state || "Not Specified", // Default for missing state
-      
-      // Registration Metadata
-      registrationType: "direct"
+      teamId = team._id;
+    }
+    // Create individual registration records for statistical analysis
+    const registrationPromises = participants.map((participant) => {
+      return EventRegistration.create({
+        // Event Information
+        eventId,
+        eventName: event.name,
+        eventType: event.event_type,
+
+        // Team Information (if applicable)
+        teamId,
+        teamName: event.event_type === "group" ? teamName.trim() : null,
+
+        // Registrant Information
+        registrantId,
+        registrantEmail: registrant.email,
+
+        // Participant Information
+        participantName: participant.name,
+        participantEmail: participant.email || null,
+        participantMobile: participant.mobile || null,
+
+        // Educational Information
+        level: participant.level,
+        degree: participant.degree,
+        department:
+          participant.dept === "Other"
+            ? participant.customDept || "Other"
+            : participant.dept,
+        customDepartment:
+          participant.dept === "Other" ? participant.customDept : null,
+        year: participant.year,
+
+        // Demographic Information
+        gender: participant.gender,
+
+        // College Information (inherited from registrant)
+        collegeName: registrant.college,
+        collegeCity: registrant.city,
+        collegeState: registrant.state || "Not Specified", // Default for missing state
+
+        // Registration Metadata
+        registrationType: "direct",
+      });
     });
-  });
 
     // Execute all registration creations
     const registrations = await Promise.all(registrationPromises);
@@ -377,20 +396,43 @@ exports.registerEventWithParticipants = catchAsyncError(
 );
 
 // Get registrations for user's college (for college registrations view)
+// Enhanced for coordinators to see their own + other coordinators' registrations
 exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
   const userId = req.user._id;
 
-  // Get user details to find their college
+  // Get user details to find their college and role
   const user = await User.findById(userId);
   if (!user) {
     return next(new ErrorHandler("User not found", 404));
   }
 
-  // Fetch all registrations for the user's college
-  const registrations = await EventRegistration.find({
-    collegeName: user.college,
-    isActive: true,
-  }).sort({ registrationDate: -1 });
+  let registrations;
+  let coordinators = [];
+
+  if (user.role === "admin") {
+    // For coordinators: Get registrations from all coordinators of the same college
+    // First, find all coordinators from the same college
+    coordinators = await User.find({
+      college: user.college,
+      role: "admin",
+      isVerified: true,
+    }).select("_id name email club assignedEvent");
+
+    const coordinatorIds = coordinators.map((coord) => coord._id);
+
+    // Fetch registrations created by any coordinator from this college
+    registrations = await EventRegistration.find({
+      collegeName: user.college,
+      registrantId: { $in: coordinatorIds },
+      isActive: true,
+    }).sort({ registrationDate: -1 });
+  } else {
+    // For regular users: Only show registrations for the user's college (existing behavior)
+    registrations = await EventRegistration.find({
+      collegeName: user.college,
+      isActive: true,
+    }).sort({ registrationDate: -1 });
+  }
 
   // Separate solo and team registrations
   const soloRegistrations = registrations.filter(
@@ -411,6 +453,8 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
         eventId: reg.eventId,
         teamId: reg.teamId,
         eventType: reg.eventType,
+        registrantId: reg.registrantId, // Add this for coordinator tracking
+        registrantEmail: reg.registrantEmail,
         members: [],
       };
     }
@@ -493,5 +537,17 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
     stats,
     college: user.college,
     total: registrations.length,
+    userRole: user.role,
+    currentUserId: userId.toString(),
+    coordinators:
+      user.role === "admin"
+        ? coordinators.map((coord) => ({
+            _id: coord._id,
+            name: coord.name,
+            email: coord.email,
+            club: coord.club,
+            assignedEvent: coord.assignedEvent,
+          }))
+        : [],
   });
 });

@@ -8,8 +8,8 @@ const { Schema } = mongoose;
 
 const UserSchema = new Schema({
   name: { type: String, required: true },
-  level: { 
-    type: String, 
+  level: {
+    type: String,
     required: true,
     enum: ["UG", "PG", "PhD"],
     default: function () {
@@ -24,16 +24,30 @@ const UserSchema = new Schema({
         // Accept comprehensive degree types
         const allowed = [
           // UG degrees
-          "BE", "BTech", "BSc", "BCA", "BA", "BCom", "BBA", "BMS",
-          // PG degrees  
-          "ME", "MTech", "MSc", "MCA", "MA", "MCom", "MBA", "MSW",
+          "BE",
+          "BTech",
+          "BSc",
+          "BCA",
+          "BA",
+          "BCom",
+          "BBA",
+          "BMS",
+          // PG degrees
+          "ME",
+          "MTech",
+          "MSc",
+          "MCA",
+          "MA",
+          "MCom",
+          "MBA",
+          "MSW",
           // PhD
-          "PhD"
+          "PhD",
         ];
         return allowed.includes(v);
       },
-      message: "Degree type is invalid."
-    }
+      message: "Degree type is invalid.",
+    },
   },
   dept: { type: String, required: true },
   year: {
@@ -43,22 +57,22 @@ const UserSchema = new Schema({
       return this.role === "admin" ? "0" : undefined;
     },
   },
-  gender: { 
-    type: String, 
+  gender: {
+    type: String,
     required: true,
     enum: ["Male", "Female", "Other"],
     default: function () {
       return this.role === "admin" ? "Male" : undefined;
     },
   },
-  phoneNumber: { 
-    type: String, 
+  phoneNumber: {
+    type: String,
     required: true,
     validate: {
       validator: function (v) {
         return /^[6-9]\d{9}$/.test(v);
       },
-      message: "Please enter a valid 10-digit mobile number starting with 6-9."
+      message: "Please enter a valid 10-digit mobile number starting with 6-9.",
     },
     default: function () {
       return this.role === "admin" ? "9999999999" : undefined;
@@ -113,6 +127,8 @@ const UserSchema = new Schema({
   resetPasswordTokenExpire: { type: Date },
   verificationToken: { type: String },
   verificationTokenExpire: { type: Date },
+  verificationOTP: { type: String },
+  verificationOTPExpire: { type: Date },
   adminInviteToken: { type: String },
   adminInviteTokenExpire: { type: Date },
   invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Users" },
@@ -162,6 +178,14 @@ UserSchema.methods.generateVerificationToken = function () {
     .digest("hex");
   this.verificationTokenExpire = Date.now() + 24 * 60 * 60 * 1000;
   return token;
+};
+
+UserSchema.methods.generateVerificationOTP = function () {
+  // Generate 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  this.verificationOTP = otp;
+  this.verificationOTPExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+  return otp;
 };
 
 UserSchema.methods.generateAdminInviteToken = function () {

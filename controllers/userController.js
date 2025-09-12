@@ -6,11 +6,23 @@ const ErrorHandler = require("../utils/errorHandler");
 const EventModel = require("../models/events");
 const sendToken = require("../utils/jwt");
 const signUpUser = catchAsyncError(async (req, res, next) => {
-
   // Debug: Log incoming signup data
-  console.log('Signup request body:', req.body);
+  console.log("Signup request body:", req.body);
 
-  const { name, level, degree, dept, year, gender, phoneNumber, email, password, role, college, city } = req.body;
+  const {
+    name,
+    level,
+    degree,
+    dept,
+    year,
+    gender,
+    phoneNumber,
+    email,
+    password,
+    role,
+    college,
+    city,
+  } = req.body;
 
   let existingUser = await UserModel.findOne({ email });
   if (existingUser) {
@@ -52,16 +64,18 @@ const signUpUser = catchAsyncError(async (req, res, next) => {
     console.log(`🎉 First user (${email}) is being created as Super Admin`);
   }
 
-
   // Save user first, handle validation errors
   try {
     await user.save();
     console.log(`✅ User ${email} created and saved to database successfully`);
   } catch (err) {
     console.error(`❌ Failed to save user ${email}:`, err);
-    let errorMessage = "Failed to create user. Please check your details and try again.";
+    let errorMessage =
+      "Failed to create user. Please check your details and try again.";
     if (err.name === "ValidationError") {
-      errorMessage = Object.values(err.errors).map(e => e.message).join(" ");
+      errorMessage = Object.values(err.errors)
+        .map((e) => e.message)
+        .join(" ");
     } else if (err.code === 11000 && err.keyPattern && err.keyPattern.email) {
       errorMessage = "Email already registered.";
     }
@@ -71,24 +85,27 @@ const signUpUser = catchAsyncError(async (req, res, next) => {
     });
   }
 
-  // Generate verification token and send email after user is saved
-  const verificationToken = user.generateVerificationToken();
-  const verifyUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/auth/verify/${verificationToken}`;
+  // Generate verification OTP and send email after user is saved
+  const verificationOTP = user.generateVerificationOTP();
+  await user.save({ validateBeforeSave: false });
+
   try {
-    console.log(`📧 Attempting to send verification email to ${email}...`);
+    console.log(`📧 Attempting to send verification OTP to ${email}...`);
     await sendEmail({
       email: user.email,
-      subject: "Verify Your Email",
-      message: `Please click the following link to verify your account: \n\n${verifyUrl}\n\nThis link is valid for 24 hours.`,
+      subject: "Verify Your Email - OTP Code",
+      message: `Your verification code is: ${verificationOTP}\n\nThis code is valid for 10 minutes.\n\nPlease enter this code on the verification page to complete your registration.`,
     });
-    console.log(`✅ Verification email sent successfully to ${email}`);
+    console.log(`✅ Verification OTP sent successfully to ${email}`);
   } catch (err) {
-    console.error(`❌ Failed to send verification email to ${email}:`, err);
-    let errorMessage = "Failed to send verification email. Please try again later.";
+    console.error(`❌ Failed to send verification OTP to ${email}:`, err);
+    let errorMessage =
+      "Failed to send verification email. Please try again later.";
     if (err.code === "EAUTH" || err.responseCode === 535) {
       errorMessage = "Email configuration error. Please contact support.";
     } else if (err.code === "ECONNECTION" || err.code === "ETIMEDOUT") {
-      errorMessage = "Email service temporarily unavailable. Please try again later.";
+      errorMessage =
+        "Email service temporarily unavailable. Please try again later.";
     } else if (err.code === "EMESSAGE" || err.responseCode === 550) {
       errorMessage = "Invalid email address. Please check and try again.";
     }
@@ -101,11 +118,12 @@ const signUpUser = catchAsyncError(async (req, res, next) => {
   res.status(201).json({
     success: true,
     message: isFirstUser
-      ? "🎉 Welcome! You have been automatically made a Super Admin. Please check your email to verify your account."
-      : "User registered successfully. Please check your email to verify your account.",
+      ? "🎉 Welcome! You have been automatically made a Super Admin. Please check your email for the verification code."
+      : "User registered successfully. Please check your email for the verification code.",
     isFirstUser,
     role: user.role,
     isSuperAdmin: user.isSuperAdmin,
+    email: user.email, // Include email for OTP verification
   });
 });
 
@@ -135,6 +153,82 @@ const verifyEmail = catchAsyncError(async (req, res, next) => {
     success: true,
     message: "Email verified successfully! You can now log in.",
   });
+});
+
+const verifyOTP = catchAsyncError(async (req, res, next) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and OTP are required",
+    });
+  }
+
+  const user = await UserModel.findOne({
+    email,
+    verificationOTP: otp,
+    verificationOTPExpire: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid or expired OTP",
+    });
+  }
+
+  user.isVerified = true;
+  user.verificationOTP = undefined;
+  user.verificationOTPExpire = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    message: "Email verified successfully! You can now log in.",
+  });
+});
+
+const resendOTP = catchAsyncError(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    });
+  }
+
+  const user = await UserModel.findOne({ email, isVerified: false });
+
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      message: "User not found or already verified",
+    });
+  }
+
+  const verificationOTP = user.generateVerificationOTP();
+  await user.save({ validateBeforeSave: false });
+
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: "Verify Your Email - New OTP Code",
+      message: `Your new verification code is: ${verificationOTP}\n\nThis code is valid for 10 minutes.\n\nPlease enter this code on the verification page to complete your registration.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "New OTP sent successfully!",
+    });
+  } catch (err) {
+    console.error("Failed to send OTP:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send OTP. Please try again later.",
+    });
+  }
 });
 
 const forgotPassword = catchAsyncError(async (req, res, next) => {
@@ -365,7 +459,10 @@ const getUserRegistrations = catchAsyncError(async (req, res, next) => {
 
   const registrations = events.map((event) => {
     const userApplication = event.applications.find(
-      (app) => app.userId && app.userId._id && app.userId._id.toString() === userId.toString()
+      (app) =>
+        app.userId &&
+        app.userId._id &&
+        app.userId._id.toString() === userId.toString()
     );
 
     let teamDetails = null;
@@ -475,6 +572,8 @@ const changePassword = catchAsyncError(async (req, res, next) => {
 module.exports = {
   signUpUser,
   verifyEmail,
+  verifyOTP,
+  resendOTP,
   forgotPassword,
   resetPassword,
   signinUser,

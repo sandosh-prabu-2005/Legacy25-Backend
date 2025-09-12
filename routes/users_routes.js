@@ -2,6 +2,8 @@ const express = require("express");
 const {
   signUpUser,
   verifyEmail,
+  verifyOTP,
+  resendOTP,
   forgotPassword,
   resetPassword,
   signinUser,
@@ -20,6 +22,8 @@ const router = express.Router();
 
 router.route("/user/signup").post(signUpUser);
 router.route("/user/verify/:token").get(verifyEmail);
+router.route("/user/verify-otp").post(verifyOTP);
+router.route("/user/resend-otp").post(resendOTP);
 router.route("/user/signin").post(signinUser);
 router.route("/user/signout").get(signOutUser);
 router.route("/user/find").post(isAuthenticatedUser, findUser);
