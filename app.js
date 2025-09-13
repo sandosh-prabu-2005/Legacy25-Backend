@@ -25,7 +25,10 @@ const corsOptions = {
     "X-Requested-With",
     "Accept",
     "Origin",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers",
   ],
+  exposedHeaders: ["Authorization"],
   optionsSuccessStatus: 200,
 };
 
