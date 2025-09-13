@@ -15,6 +15,7 @@ const {
   getUserRegistrations,
   getAllUsers,
   changePassword,
+  getCollegeUsers,
 } = require("../controllers/userController");
 const { isAuthenticatedUser } = require("../middlewares/authenticate");
 
@@ -37,5 +38,6 @@ router.route("/years").get(getYears);
 router.route("/user/password/forgot").post(forgotPassword);
 router.route("/user/password/reset/:token").post(resetPassword);
 router.route("/user/password/change").put(isAuthenticatedUser, changePassword);
+router.route("/user/college-users").get(isAuthenticatedUser, getCollegeUsers);
 
 module.exports = router;

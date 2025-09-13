@@ -169,13 +169,6 @@ exports.registerEventWithParticipants = catchAsyncError(
     const { eventId, teamName, participants } = req.body;
     const registrantId = req.user._id;
 
-    console.log("[DEBUG] Registration request:", {
-      eventId,
-      teamName,
-      participantsCount: participants?.length,
-      registrantId: registrantId.toString(),
-    });
-
     // Validate required fields
     if (
       !eventId ||
@@ -187,17 +180,33 @@ exports.registerEventWithParticipants = catchAsyncError(
         new ErrorHandler("Event ID and participants are required", 400)
       );
     }
-
-    console.log("varudhu bha=============");
     // Check if event exists
     const event = await Event.findById(eventId);
     if (!event) {
       return next(new ErrorHandler("Event not found", 404));
     }
-    console.log("==============debug======================");
-    console.table(event);
+
     // Get registrant (user who is registering) details for college inheritance
     const registrant = await User.findById(registrantId);
+    if (!registrant) {
+      return next(new ErrorHandler("Registrant not found", 404));
+    }
+
+    // Check if any coordinator from this college has already registered for this event
+    const existingRegistration = await EventRegistration.findOne({
+      collegeName: registrant.college,
+      eventId: eventId,
+      isActive: true,
+    });
+
+    if (existingRegistration) {
+      return next(
+        new ErrorHandler(
+          `Your college has already registered for this event. Only one registration per college per event is allowed.`,
+          400
+        )
+      );
+    }
     if (!registrant) {
       return next(new ErrorHandler("Registrant not found", 404));
     }
@@ -363,14 +372,6 @@ exports.registerEventWithParticipants = catchAsyncError(
     // Execute all registration creations
     const registrations = await Promise.all(registrationPromises);
 
-    console.log("[DEBUG] Created registrations:", {
-      count: registrations.length,
-      eventType: event.event_type,
-      teamId: teamId ? teamId.toString() : null,
-      collegeName: registrant.college,
-      collegeCity: registrant.city,
-    });
-
     // NOTE: Solo events are now stored ONLY in EventRegistration collection,
     // not in Event.applications for cleaner data architecture
 
@@ -400,90 +401,44 @@ exports.registerEventWithParticipants = catchAsyncError(
 exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
   const userId = req.user._id;
 
-  // Get user details to find their college and role
+  // Get user details to find their college
   const user = await User.findById(userId);
   if (!user) {
     return next(new ErrorHandler("User not found", 404));
   }
 
-  let registrations;
-  let coordinators = [];
+  // Find all coordinators from the same college
+  // A coordinator is any registered user (role: "user" with verified account)
+  // OR admin users who are not super admin
+  let coordinatorQuery = {
+    college: user.college,
+    isVerified: true,
+    $or: [
+      { role: "user" }, // Regular users who are coordinators
+      { role: "admin", isSuperAdmin: false }, // Admin coordinators
+    ],
+  };
 
-  // Determine if user is coordinator or super admin
-  // Let's try multiple criteria to identify coordinators
-  const isCoordinatorByFields =
-    user.isVerified && user.assignedEvent && user.club && user.role === "user";
-  const isCoordinatorByRole = user.role === "admin" && !user.isSuperAdmin;
-  const isCoordinator = isCoordinatorByFields || isCoordinatorByRole;
-  const isSuperAdmin = user.role === "admin" && user.isSuperAdmin;
+  const coordinators = await User.find(coordinatorQuery).select(
+    "_id name email club assignedEvent role"
+  );
 
-  if (isCoordinator || isSuperAdmin) {
-    // Try both criteria for finding coordinators
-    let coordinatorQuery1 = {
-      college: user.college,
-      role: "user",
-      isVerified: true,
-      assignedEvent: { $exists: true },
-      club: { $exists: true },
-    };
+  const coordinatorIds = coordinators.map((coord) => coord._id);
 
-    let coordinatorQuery2 = {
-      college: user.college,
-      role: "admin",
-      isSuperAdmin: false,
-      isVerified: true,
-    };
-
-    // First, find all coordinators from the same college using both criteria
-    const coordinators1 = await User.find(coordinatorQuery1).select(
-      "_id name email club assignedEvent"
-    );
-    const coordinators2 = await User.find(coordinatorQuery2).select(
-      "_id name email club assignedEvent"
-    );
-
-    // Combine and deduplicate coordinators
-    const allCoordinators = [...coordinators1, ...coordinators2];
-    const uniqueCoordinators = allCoordinators.filter(
-      (coord, index, self) =>
-        index ===
-        self.findIndex((c) => c._id.toString() === coord._id.toString())
-    );
-
-    coordinators = uniqueCoordinators;
-
-    const coordinatorIds = coordinators.map((coord) => coord._id);
-
-    // Fetch registrations created by any coordinator from this college
-    registrations = await EventRegistration.find({
-      collegeName: user.college,
-      registrantId: { $in: coordinatorIds },
-      isActive: true,
-    })
-      .populate("registrantId", "name email")
-      .sort({ registrationDate: -1 });
-  } else {
-    // For regular users: Only show registrations for the user's college (existing behavior)
-    registrations = await EventRegistration.find({
-      collegeName: user.college,
-      isActive: true,
-    })
-      .populate("registrantId", "name email")
-      .sort({ registrationDate: -1 });
-  }
+  // Fetch ALL registrations created by coordinators from this college
+  const registrations = await EventRegistration.find({
+    collegeName: user.college,
+    registrantId: { $in: coordinatorIds },
+    isActive: true,
+  })
+    .populate("registrantId", "name email role")
+    .sort({ registrationDate: -1 });
 
   // Separate solo and team registrations
   const soloRegistrations = registrations.filter(
     (reg) => reg.eventType === "solo"
   );
 
-  // Log sample to verify population
-  if (soloRegistrations.length > 0) {
-    console.log(
-      "Sample solo registration registrant:",
-      soloRegistrations[0].registrantId
-    );
-  }
   const teamRegistrations = registrations.filter(
     (reg) => reg.eventType === "group"
   );
@@ -499,9 +454,11 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
         eventId: reg.eventId,
         teamId: reg.teamId,
         eventType: reg.eventType,
-        registrantId: reg.registrantId._id, // Store the ID
-        registrantName: reg.registrantId.name, // Store the name
+        registrantId: reg.registrantId._id.toString(),
+        registrantName: reg.registrantId.name,
         registrantEmail: reg.registrantEmail,
+        collegeName: reg.collegeName,
+        registrationDate: reg.registrationDate,
         members: [],
       };
     }
@@ -516,7 +473,7 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
       year: reg.year,
       gender: reg.gender,
       registrationDate: reg.registrationDate,
-      registrantId: reg.registrantId._id,
+      registrantId: reg.registrantId._id.toString(),
       registrantEmail: reg.registrantEmail,
     });
   });
@@ -524,19 +481,44 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
   // Convert grouped teams to array
   const teamRegistrationsList = Object.values(groupedTeamRegistrations);
 
-  // Log first few registrations to debug
-  console.log("=== College Registrations Debug ===");
-  console.log("User:", user.name, "College:", user.college);
-  console.log("User Role:", user.role, "isSuperAdmin:", user.isSuperAdmin);
-  console.log(
-    "Determined role - isCoordinator:",
-    isCoordinator,
-    "isSuperAdmin:",
-    isSuperAdmin
-  );
-  console.log("Total coordinators found:", coordinators.length);
-  console.log("Solo registrations sample:", soloRegistrations.slice(0, 1));
-  console.log("Team registrations sample:", teamRegistrationsList.slice(0, 1));
+  // Define role variables for debugging
+  const isCoordinator =
+    user.role === "user" || (user.role === "admin" && !user.isSuperAdmin);
+  const isSuperAdmin = user.isSuperAdmin || false;
+
+  // Add ownership information to each registration
+  const soloRegistrationsWithOwnership = soloRegistrations.map((reg) => ({
+    ...reg.toObject(),
+    isOwnRegistration: reg.registrantId._id.toString() === userId.toString(),
+  }));
+
+  const teamRegistrationsWithOwnership = teamRegistrationsList.map((team) => ({
+    ...team,
+    isOwnRegistration: team.registrantId === userId.toString(),
+  }));
+
+  // Debug team grouping
+  console.log("Team registrations detailed:");
+  teamRegistrationsList.forEach((team, index) => {
+    console.log(`Team ${index + 1}:`, {
+      teamName: team.teamName,
+      eventName: team.eventName,
+      registrantId: team.registrantId,
+      registrantName: team.registrantName,
+      memberCount: team.members.length,
+    });
+  });
+
+  console.log("Solo registrations detailed:");
+  soloRegistrations.slice(0, 3).forEach((solo, index) => {
+    console.log(`Solo ${index + 1}:`, {
+      participantName: solo.participantName,
+      eventName: solo.eventName,
+      registrantId: solo.registrantId._id.toString(),
+      registrantName: solo.registrantId.name,
+    });
+  });
+
   console.log(
     "Final userRole being sent:",
     isSuperAdmin ? "admin" : isCoordinator ? "coordinator" : "user"
@@ -594,28 +576,32 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
         department: reg.fullDepartment,
         year: reg.year,
         gender: reg.gender,
+        collegeName: reg.collegeName,
         registrationDate: reg.registrationDate,
-        registrantId: reg.registrantId._id,
+        registrantId: reg.registrantId._id.toString(),
         registrantName: reg.registrantId.name,
         registrantEmail: reg.registrantEmail,
+        isOwnRegistration:
+          reg.registrantId._id.toString() === userId.toString(),
       })),
-      teamRegistrations: teamRegistrationsList,
+      teamRegistrations: teamRegistrationsList.map((team) => ({
+        ...team,
+        isOwnRegistration: team.registrantId === userId.toString(),
+      })),
     },
     stats,
     college: user.college,
     total: registrations.length,
-    userRole: isSuperAdmin ? "admin" : isCoordinator ? "coordinator" : "user",
+    userRole: "coordinator", // All users can see coordinator registrations
     currentUserId: userId.toString(),
-    coordinators:
-      isCoordinator || isSuperAdmin
-        ? coordinators.map((coord) => ({
-            _id: coord._id,
-            name: coord.name,
-            email: coord.email,
-            club: coord.club,
-            assignedEvent: coord.assignedEvent,
-          }))
-        : [],
+    coordinators: coordinators.map((coord) => ({
+      _id: coord._id,
+      name: coord.name,
+      email: coord.email,
+      club: coord.club,
+      assignedEvent: coord.assignedEvent,
+      role: coord.role,
+    })),
   });
 });
 
@@ -722,3 +708,115 @@ exports.updateTeamRegistrationMember = catchAsyncError(
     });
   }
 );
+
+// Check if college can register for a specific event
+exports.checkEventAvailability = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { eventId } = req.params;
+
+  // Get user details to find their college
+  const user = await User.findById(userId);
+  if (!user) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  // Check if any coordinator from this college has already registered for this event
+  const existingRegistration = await EventRegistration.findOne({
+    collegeName: user.college,
+    eventId: eventId,
+    isActive: true,
+  });
+
+  const canRegister = !existingRegistration;
+
+  res.status(200).json({
+    success: true,
+    canRegister,
+    message: canRegister
+      ? "College can register for this event"
+      : "College has already registered for this event",
+    collegeName: user.college,
+    eventId,
+  });
+});
+
+// Remove team member
+exports.removeTeamMember = catchAsyncError(async (req, res, next) => {
+  const { teamId, memberId } = req.params;
+  const userId = req.user._id;
+
+  // Find the team
+  const team = await Teams.findById(teamId);
+  if (!team) {
+    return next(new ErrorHandler("Team not found", 404));
+  }
+
+  // Check if the current user is the one who registered this team
+  if (team.registrantId.toString() !== userId.toString()) {
+    return next(
+      new ErrorHandler("You can only edit teams you registered", 403)
+    );
+  }
+
+  // Find the member in the team
+  const memberIndex = team.members.findIndex(
+    (m) => m._id.toString() === memberId
+  );
+  if (memberIndex === -1) {
+    return next(new ErrorHandler("Member not found in team", 404));
+  }
+
+  // Check if removing this member would leave the team below minimum requirements
+  if (team.members.length <= 1) {
+    return next(
+      new ErrorHandler(
+        "Cannot remove member. Team must have at least one member.",
+        400
+      )
+    );
+  }
+
+  // Remove the member
+  const removedMember = team.members[memberIndex];
+  team.members.splice(memberIndex, 1);
+
+  // If the removed member was the leader, assign leadership to the first remaining member
+  if (removedMember.isLeader && team.members.length > 0) {
+    team.members[0].isLeader = true;
+  }
+
+  await team.save();
+
+  // Check if this was the last team from this college for this event
+  // If so, make the event available for other registrations from the same college
+  const user = await User.findById(userId);
+  const remainingTeamsForEvent = await Teams.find({
+    eventId: team.eventId,
+    registrantId: { $ne: userId }, // Exclude current user's other teams
+  }).populate("registrantId", "college");
+
+  const collegeStillHasTeamsForEvent = remainingTeamsForEvent.some(
+    (t) => t.registrantId.college === user.college
+  );
+
+  let eventAvailabilityMessage = "";
+  if (!collegeStillHasTeamsForEvent) {
+    // Remove the college's event registration record to make event available again
+    await EventRegistration.findOneAndDelete({
+      collegeName: user.college,
+      eventId: team.eventId,
+    });
+    eventAvailabilityMessage =
+      " Event is now available for other teams from your college.";
+  }
+
+  res.status(200).json({
+    success: true,
+    message: `Team member removed successfully.${eventAvailabilityMessage}`,
+    team,
+    removedMember: {
+      name: removedMember.participantName,
+      email: removedMember.participantEmail,
+    },
+  });
+});

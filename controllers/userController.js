@@ -319,18 +319,35 @@ const signinUser = catchAsyncError(async (req, res, next) => {
   sendToken(user, 201, res);
 });
 const signOutUser = (req, res, next) => {
-  res
-    .cookie("token", null, {
-      expires: new Date(Date.now()),
-      httpOnly: false, // Allow JavaScript access for debugging
-      secure: false, // Allow HTTP and HTTPS (less strict)
-      sameSite: "none", // Most permissive for cross-origin
-    })
-    .status(200)
-    .json({
-      success: true,
-      message: "Logged Out Successfully",
-    });
+  // Clear the main token cookie with multiple configurations to ensure it's cleared
+  res.cookie("token", null, {
+    expires: new Date(Date.now()),
+    httpOnly: false,
+    secure: false,
+    sameSite: "lax", // Changed from "none" to "lax" to avoid secure requirement
+  });
+
+  // Also clear with different configurations
+  res.cookie("token", "", {
+    expires: new Date(0),
+    httpOnly: false,
+    secure: false,
+    sameSite: "lax",
+    path: "/",
+  });
+
+  // Clear any other potential auth cookies
+  res.cookie("auth", "", { expires: new Date(0), path: "/", sameSite: "lax" });
+  res.cookie("session", "", {
+    expires: new Date(0),
+    path: "/",
+    sameSite: "lax",
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Logged Out Successfully",
+  });
 };
 
 const findUser = catchAsyncError(async (req, res, next) => {
@@ -569,6 +586,33 @@ const changePassword = catchAsyncError(async (req, res, next) => {
   });
 });
 
+// Get users from the same college as the current user
+const getCollegeUsers = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+
+  // Get current user to find their college
+  const currentUser = await UserModel.findById(userId);
+  if (!currentUser) {
+    return next(new ErrorHandler("User not found", 404));
+  }
+
+  // Find all users from the same college (excluding current user)
+  const collegeUsers = await UserModel.find({
+    college: currentUser.college,
+    _id: { $ne: userId }, // Exclude current user
+    isVerified: true, // Only verified users
+  })
+    .select("name email college role club assignedEvent")
+    .sort({ name: 1 });
+
+  res.status(200).json({
+    success: true,
+    users: collegeUsers,
+    college: currentUser.college,
+    total: collegeUsers.length,
+  });
+});
+
 module.exports = {
   signUpUser,
   verifyEmail,
@@ -585,4 +629,5 @@ module.exports = {
   getUserRegistrations,
   getAllUsers,
   changePassword,
+  getCollegeUsers,
 };
