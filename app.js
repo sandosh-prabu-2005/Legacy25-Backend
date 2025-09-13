@@ -16,7 +16,11 @@ const adminInvite = require("./routes/adminInvite_routes");
 const payment = require("./routes/payment_routes");
 
 const corsOptions = {
-  origin: true, // Allow all origins
+  origin: function (origin, callback) {
+    // Allow all origins
+    console.log("CORS origin:", origin);
+    callback(null, true);
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: [
@@ -27,12 +31,22 @@ const corsOptions = {
     "Origin",
     "Access-Control-Request-Method",
     "Access-Control-Request-Headers",
+    "Cookie",
   ],
-  exposedHeaders: ["Authorization"],
+  exposedHeaders: ["Authorization", "Set-Cookie"],
   optionsSuccessStatus: 200,
+  preflightContinue: false,
 };
 
 app.use(cors(corsOptions));
+
+// Add debug middleware to log all requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  console.log("Request headers:", req.headers);
+  console.log("Request cookies:", req.cookies);
+  next();
+});
 
 app.use(express.json());
 app.use(cookieParser());

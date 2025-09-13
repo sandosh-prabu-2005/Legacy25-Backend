@@ -409,14 +409,48 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
   let registrations;
   let coordinators = [];
 
-  if (user.role === "admin") {
-    // For coordinators: Get registrations from all coordinators of the same college
-    // First, find all coordinators from the same college
-    coordinators = await User.find({
+  // Determine if user is coordinator or super admin
+  // Let's try multiple criteria to identify coordinators
+  const isCoordinatorByFields =
+    user.isVerified && user.assignedEvent && user.club && user.role === "user";
+  const isCoordinatorByRole = user.role === "admin" && !user.isSuperAdmin;
+  const isCoordinator = isCoordinatorByFields || isCoordinatorByRole;
+  const isSuperAdmin = user.role === "admin" && user.isSuperAdmin;
+
+  if (isCoordinator || isSuperAdmin) {
+    // Try both criteria for finding coordinators
+    let coordinatorQuery1 = {
+      college: user.college,
+      role: "user",
+      isVerified: true,
+      assignedEvent: { $exists: true },
+      club: { $exists: true },
+    };
+
+    let coordinatorQuery2 = {
       college: user.college,
       role: "admin",
+      isSuperAdmin: false,
       isVerified: true,
-    }).select("_id name email club assignedEvent");
+    };
+
+    // First, find all coordinators from the same college using both criteria
+    const coordinators1 = await User.find(coordinatorQuery1).select(
+      "_id name email club assignedEvent"
+    );
+    const coordinators2 = await User.find(coordinatorQuery2).select(
+      "_id name email club assignedEvent"
+    );
+
+    // Combine and deduplicate coordinators
+    const allCoordinators = [...coordinators1, ...coordinators2];
+    const uniqueCoordinators = allCoordinators.filter(
+      (coord, index, self) =>
+        index ===
+        self.findIndex((c) => c._id.toString() === coord._id.toString())
+    );
+
+    coordinators = uniqueCoordinators;
 
     const coordinatorIds = coordinators.map((coord) => coord._id);
 
@@ -425,26 +459,31 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
       collegeName: user.college,
       registrantId: { $in: coordinatorIds },
       isActive: true,
-    }).sort({ registrationDate: -1 });
+    })
+      .populate("registrantId", "name email")
+      .sort({ registrationDate: -1 });
   } else {
-    // For regular users: Get coordinators from the same college for reference
-    coordinators = await User.find({
-      college: user.college,
-      role: "admin",
-      isVerified: true,
-    }).select("_id name email club assignedEvent");
-
     // For regular users: Only show registrations for the user's college (existing behavior)
     registrations = await EventRegistration.find({
       collegeName: user.college,
       isActive: true,
-    }).sort({ registrationDate: -1 });
+    })
+      .populate("registrantId", "name email")
+      .sort({ registrationDate: -1 });
   }
 
   // Separate solo and team registrations
   const soloRegistrations = registrations.filter(
     (reg) => reg.eventType === "solo"
   );
+
+  // Log sample to verify population
+  if (soloRegistrations.length > 0) {
+    console.log(
+      "Sample solo registration registrant:",
+      soloRegistrations[0].registrantId
+    );
+  }
   const teamRegistrations = registrations.filter(
     (reg) => reg.eventType === "group"
   );
@@ -460,7 +499,8 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
         eventId: reg.eventId,
         teamId: reg.teamId,
         eventType: reg.eventType,
-        registrantId: reg.registrantId, // Add this for coordinator tracking
+        registrantId: reg.registrantId._id, // Store the ID
+        registrantName: reg.registrantId.name, // Store the name
         registrantEmail: reg.registrantEmail,
         members: [],
       };
@@ -476,13 +516,32 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
       year: reg.year,
       gender: reg.gender,
       registrationDate: reg.registrationDate,
-      registrantId: reg.registrantId,
+      registrantId: reg.registrantId._id,
       registrantEmail: reg.registrantEmail,
     });
   });
 
   // Convert grouped teams to array
   const teamRegistrationsList = Object.values(groupedTeamRegistrations);
+
+  // Log first few registrations to debug
+  console.log("=== College Registrations Debug ===");
+  console.log("User:", user.name, "College:", user.college);
+  console.log("User Role:", user.role, "isSuperAdmin:", user.isSuperAdmin);
+  console.log(
+    "Determined role - isCoordinator:",
+    isCoordinator,
+    "isSuperAdmin:",
+    isSuperAdmin
+  );
+  console.log("Total coordinators found:", coordinators.length);
+  console.log("Solo registrations sample:", soloRegistrations.slice(0, 1));
+  console.log("Team registrations sample:", teamRegistrationsList.slice(0, 1));
+  console.log(
+    "Final userRole being sent:",
+    isSuperAdmin ? "admin" : isCoordinator ? "coordinator" : "user"
+  );
+  console.log("===================================");
 
   // Calculate statistics
   const stats = {
@@ -536,7 +595,8 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
         year: reg.year,
         gender: reg.gender,
         registrationDate: reg.registrationDate,
-        registrantId: reg.registrantId,
+        registrantId: reg.registrantId._id,
+        registrantName: reg.registrantId.name,
         registrantEmail: reg.registrantEmail,
       })),
       teamRegistrations: teamRegistrationsList,
@@ -544,15 +604,18 @@ exports.getCollegeRegistrations = catchAsyncError(async (req, res, next) => {
     stats,
     college: user.college,
     total: registrations.length,
-    userRole: user.role,
+    userRole: isSuperAdmin ? "admin" : isCoordinator ? "coordinator" : "user",
     currentUserId: userId.toString(),
-    coordinators: coordinators.map((coord) => ({
-      _id: coord._id,
-      name: coord.name,
-      email: coord.email,
-      club: coord.club,
-      assignedEvent: coord.assignedEvent,
-    })),
+    coordinators:
+      isCoordinator || isSuperAdmin
+        ? coordinators.map((coord) => ({
+            _id: coord._id,
+            name: coord.name,
+            email: coord.email,
+            club: coord.club,
+            assignedEvent: coord.assignedEvent,
+          }))
+        : [],
   });
 });
 
