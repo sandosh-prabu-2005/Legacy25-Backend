@@ -4,9 +4,9 @@ const sendToken = (user, statusCode, res) => {
     expires: new Date(
       Date.now() + process.env.COOKIE_EXPIRES_TIME * 24 * 60 * 60 * 1000
     ),
-    httpOnly: true,
-    secure: true, // Use secure cookies in production
-    sameSite: "none", // Allow cross-origin cookies in production
+    httpOnly: false, // Allow JavaScript access for debugging
+    secure: false,   // Allow HTTP and HTTPS (less strict)
+    sameSite: "none", // Most permissive for cross-origin
   };
   res.status(statusCode).cookie("token", token, options).json({
     success: true,

@@ -322,9 +322,9 @@ const signOutUser = (req, res, next) => {
   res
     .cookie("token", null, {
       expires: new Date(Date.now()),
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "none",
+      httpOnly: false, // Allow JavaScript access for debugging
+      secure: false,   // Allow HTTP and HTTPS (less strict)
+      sameSite: "none", // Most permissive for cross-origin
     })
     .status(200)
     .json({
