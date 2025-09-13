@@ -323,7 +323,7 @@ const signOutUser = (req, res, next) => {
     .cookie("token", null, {
       expires: new Date(Date.now()),
       httpOnly: false, // Allow JavaScript access for debugging
-      secure: false,   // Allow HTTP and HTTPS (less strict)
+      secure: false, // Allow HTTP and HTTPS (less strict)
       sameSite: "none", // Most permissive for cross-origin
     })
     .status(200)
