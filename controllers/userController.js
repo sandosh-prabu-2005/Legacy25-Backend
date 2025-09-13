@@ -324,7 +324,7 @@ const signOutUser = (req, res, next) => {
       expires: new Date(Date.now()),
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      sameSite: "none",
     })
     .status(200)
     .json({
