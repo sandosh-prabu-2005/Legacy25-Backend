@@ -44,7 +44,12 @@ exports.isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
       return next(new ErrorHandler("User not found", 404));
     }
 
-    console.log("User found:", req.user.email, "Verified:", req.user.isVerified);
+    console.log(
+      "User found:",
+      req.user.email,
+      "Verified:",
+      req.user.isVerified
+    );
 
     // REMOVE EMAIL VERIFICATION CHECK FOR PROTOTYPE
     // if (req.user.isVerified === false) {
